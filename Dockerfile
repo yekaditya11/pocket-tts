@@ -2,11 +2,6 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Intel CPU Optimizations (Critical for c7i/c8i)
-ENV OMP_NUM_THREADS=4
-ENV MKL_NUM_THREADS=4
-ENV KMP_AFFINITY=granularity=fine,compact,1,0
-ENV KMP_BLOCKTIME=1
 
 
 # Install uv
