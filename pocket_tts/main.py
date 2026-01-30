@@ -43,8 +43,59 @@ cli_app = typer.Typer(
 tts_model: TTSModel | None = None
 global_model_state = None
 
+import torch
+import time
+from contextlib import asynccontextmanager
+
+def warmup_model(voice_path):
+    """Run a dummy generation to trigger torch.compile"""
+    logger.info("Initializing model compilation (this may take up to 60 seconds)...")
+    start_time = time.time()
+    try:
+        # Get state
+        state = tts_model.get_state_for_audio_prompt(voice_path, truncate=True)
+        # Dummy text
+        dummy_text = "Warmup the engine."
+        # Run generation
+        # We need to drain the iterator
+        chunks = tts_model.generate_audio_stream(state, dummy_text)
+        for _ in chunks:
+            pass
+        end_time = time.time()
+        logger.info(f"Model compilation complete in {end_time - start_time:.2f} seconds.")
+    except Exception as e:
+        logger.warning(f"Warmup failed: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load default model if not already loaded (though cli_app.serve loads it)
+    # The current code loads it in 'serve' but app is created globaly.
+    # To be safe and support running via uvicorn directy, we can ensure it's loaded here if None
+    global tts_model
+    if tts_model is None:
+         # Fallback to defaults
+         tts_model = TTSModel.load_model(DEFAULT_VARIANT)
+
+    # Enable torch.compile
+    try:
+        logger.info("Enabling torch.compile for optimizations...")
+        tts_model.generate_audio_stream = torch.compile(tts_model.generate_audio_stream, mode="reduce-overhead")
+    except Exception as e:
+        logger.warning(f"Could not enable torch.compile: {e}")
+
+    # Warmup
+    voice_path = Path("sample_audio/homesoul_sampleaudio.wav")
+    if voice_path.exists():
+        warmup_model(voice_path)
+    else:
+        logger.warning(f"Voice file not found at {voice_path}, skipping warmup.")
+
+    yield
+    # Cleanup
+    pass
+
 web_app = FastAPI(
-    title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0"
+    title="Kyutai Pocket TTS API", description="Text-to-Speech generation API", version="1.0.0", lifespan=lifespan
 )
 web_app.add_middleware(
     CORSMiddleware,
