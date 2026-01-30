@@ -47,6 +47,11 @@ import torch
 import time
 from contextlib import asynccontextmanager
 
+# Intel Optimization: Use 4 threads for faster single-request latency
+torch.set_num_threads(4)
+# Enable AMX/BF16 matrix multiplication on supported Intel CPUs (c7i/c8i)
+torch.set_float32_matmul_precision("medium")
+
 def warmup_model(voice_path):
     """Run a dummy generation to trigger torch.compile"""
     logger.info("Initializing model compilation (this may take up to 60 seconds)...")
